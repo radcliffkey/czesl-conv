@@ -17,11 +17,12 @@ setup(
         'Development Status :: 3 - Alpha',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.6',
-        'License :: Apache License 2.0'
+        'License :: OSI Approved :: Apache Software License',
+        'Topic :: Text Processing :: Linguistic'
     ],
 
     # Dependencies
-    install_requires=['beautifulsoup4>=4.6'],
+    install_requires=['beautifulsoup4>=4.6', 'lxml>=3.8'],
 
     # Don't use find_packages() because it does not work well with namespace packages.
     packages=['czeslconv'],
