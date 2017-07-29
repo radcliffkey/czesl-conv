@@ -227,6 +227,11 @@ def createALayer(
 
     for wTag in aPara.find_all(name='w'):
         wid = wTag['id']
+
+        if not wTag.lex:
+            print(f'skipping token with no lex tag: {wTag}', file=sys.stderr)
+            continue
+
         morphs = [Morph.fromLexTag(lex) for lex in wTag.find_all(name='lex', recursive=False)]
 
         assert len(wTag.find_all(name='edge', recursive=False)) <= 1, f'w-tag contains multiple edges: {wTag}'
@@ -254,10 +259,15 @@ def createBLayer(
 
     for wTag in bPara.find_all(name='w'):
         wid = wTag['id']
-        assert len(wTag.find_all(name='lex', recursive=False)) <= 1, f'w-tag contains multiple lex tags: {wTag}'
+
+        if not wTag.lex:
+            print(f'skipping token with no lex tag: {wTag}', file=sys.stderr)
+            continue
+
+        assert len(wTag.find_all(name='lex', recursive=False)) == 1, f'w-tag contains multiple lex tags: {wTag}'
         morph = Morph.fromLexTag(wTag.lex)
 
-        assert len(wTag.find_all(name='edge', recursive=False)) <= 1, f'w-tag contains multiple edges: {wTag}'
+        #assert len(wTag.find_all(name='edge', recursive=False)) <= 1, f'w-tag contains multiple edges: {wTag}'
         errors = [ErrorData.fromTag(err) for err in wTag.edge.find_all(name='error')] if wTag.edge else []
 
         tokens.append(AnnotToken(
