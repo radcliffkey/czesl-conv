@@ -19,6 +19,9 @@ from bs4 import BeautifulSoup
 
 
 class MetaFile(NamedTuple):
+    """
+    Tuple of filenames belonging to the same annotated document
+    """
     name: str
     wfile: str
     afile: str
@@ -26,6 +29,9 @@ class MetaFile(NamedTuple):
 
 
 class MetaXml(NamedTuple):
+    """
+    Tuple of XML strings belonging to the same annotated document
+    """
     name: str
     wxml: str
     axml: str
@@ -36,6 +42,10 @@ class Morph(NamedTuple):
     lemma: str
     tags: Sequence[str]
 
+    @staticmethod
+    def fromLexTag(lex: bs4.Tag) -> 'Morph':
+        assert len(lex.find_all(name='lemma', recursive=False)) == 1
+        return Morph(lemma=lex.lemma.string, tags=[t.string for t in lex.find_all(name='mtag', recursive=False)])
 
 class WToken(NamedTuple):
     text: str
@@ -62,35 +72,57 @@ class ErrorData(NamedTuple):
         return ErrorData(tags=tags, links=links)
 
 
+class DeletionToken(NamedTuple):
+    fromId: str
+    errors: Sequence[ErrorData]
+
+
 class AnnotToken:
     """
     Annotated token with link to other layers
     """
 
     def __init__(self,
+            tid:str,
             baseToken: Union[WToken, AToken, BToken],
             *,
-            layer:str = None,
+            layer:str= None,
             sentenceId: str=None,
             linkIdsLower: Iterable[str]=None,
             linkIdsHigher: Iterable[str]=None,
             errors: Iterable[ErrorData]=None,
-            linksLower: Iterable['AnnotToken']=None,
-            linksHigher: Iterable['AnnotToken']=None
-    ):
+            linksLower: Iterable[Union['AnnotToken', DeletionToken]]=None,
+            linksHigher: Iterable[Union['AnnotToken', DeletionToken]]=None
+    ) -> None:
+        self.tid=tid
         self.baseToken = baseToken
         self.layer = layer
         self.sentenceId = sentenceId
         self.linkIdsLower = linkIdsLower
         self.linkIdsHigher = linkIdsHigher
-        self.errors = errors
-        self.linksLower = linksLower
-        self.linksHigher = linksHigher
+        self.errors = errors if errors else []
+        self.linksLower = linksLower if linksLower else []
+        self.linksHigher = linksHigher if linksHigher else []
+
+    def __str__(self) -> str:
+        return f'Token(layer={self.layer}, id={self.tid}, morph={self.baseToken})'
+
+    __repr__ = __str__
 
 
-class DeletionToken(NamedTuple):
-    fromId: str
-    errors: Sequence[ErrorData]
+class TokenLayer(NamedTuple):
+    name: str
+    tokens: Sequence[AnnotToken]
+    idToToken: Mapping[str, AnnotToken]
+
+    @staticmethod
+    def of(name:str, tokens: Sequence[AnnotToken]) -> 'TokenLayer':
+        tokens = list(tokens)
+        idToToken = {t.tid: t for t in tokens}
+        return TokenLayer(name, tokens, idToToken)
+
+    def get(self, tid:str) -> AnnotToken:
+        return self.idToToken.get(tid)
 
 
 def readFile(fileName: str) -> str:
@@ -108,7 +140,7 @@ def readMetaFile(metaFile: MetaFile) -> MetaXml:
 
 
 def revertMapping(mapping: Mapping[Any, Iterable[Any]]) -> Mapping[Any, List[Any]]:
-    revertedMap = defaultdict(list)
+    revertedMap: Mapping[Any, List[Any]] = defaultdict(list)
     for k, vals in mapping.items():
         for v in vals:
             revertedMap[v].append(k)
@@ -163,9 +195,85 @@ def getMetaFilesFromDir(dirName: str) -> Iterable[MetaFile]:
     yield from processFileGroups(baseNameToPaths)
 
 
+def createWLayer(
+        wPara: bs4.Tag,
+        idMapWA: Mapping[str, List[str]],
+        idToDelW: Mapping[str, DeletionToken]
+) -> TokenLayer:
+
+    tokens: List[AnnotToken] = []
+
+    for wTag in wPara.find_all(name='w'):
+        wid = wTag['id']
+        tokens.append(AnnotToken(
+            tid=wid,
+            baseToken=WToken(wTag.token.string),
+            layer='w',
+            linkIdsHigher=idMapWA[wid],
+            linksHigher=[idToDelW[wid]] if wid in idToDelW else []
+        ))
+
+    return TokenLayer.of('w', tokens)
+
+
+def createALayer(
+        aPara: bs4.Tag,
+        idMapAW: Mapping[str, List[str]],
+        idMapAB: Mapping[str, List[str]],
+        idToDelA: Mapping[str, DeletionToken]
+) -> TokenLayer:
+
+    tokens: List[AnnotToken] = []
+
+    for wTag in aPara.find_all(name='w'):
+        wid = wTag['id']
+        morphs = [Morph.fromLexTag(lex) for lex in wTag.find_all(name='lex', recursive=False)]
+
+        assert len(wTag.find_all(name='edge', recursive=False)) <= 1, f'w-tag contains multiple edges: {wTag}'
+        errors = [ErrorData.fromTag(err) for err in wTag.edge.find_all(name='error')] if wTag.edge else []
+
+        tokens.append(AnnotToken(
+            tid=wid,
+            baseToken=AToken(text=wTag.token.string, morphs=morphs),
+            layer='a',
+            linkIdsLower=idMapAW[wid],
+            linkIdsHigher=idMapAB[wid],
+            linksHigher=[idToDelA[wid]] if wid in idToDelA else [],
+            errors=errors
+        ))
+
+    return TokenLayer.of('a', tokens)
+
+
+def createBLayer(
+        bPara: bs4.Tag,
+        idMapBA: Mapping[str, List[str]],
+) -> TokenLayer:
+
+    tokens: List[AnnotToken] = []
+
+    for wTag in bPara.find_all(name='w'):
+        wid = wTag['id']
+        assert len(wTag.find_all(name='lex', recursive=False)) <= 1, f'w-tag contains multiple lex tags: {wTag}'
+        morph = Morph.fromLexTag(wTag.lex)
+
+        assert len(wTag.find_all(name='edge', recursive=False)) <= 1, f'w-tag contains multiple edges: {wTag}'
+        errors = [ErrorData.fromTag(err) for err in wTag.edge.find_all(name='error')] if wTag.edge else []
+
+        tokens.append(AnnotToken(
+            tid=wid,
+            baseToken=BToken(text=wTag.token.string, morph=morph),
+            layer='b',
+            linkIdsLower=idMapBA[wid],
+            errors=errors
+        ))
+
+    return TokenLayer.of('b', tokens)
+
+
 def createLinkedLayers(wPara: bs4.Tag, aPara: bs4.Tag, bPara: bs4.Tag):
-    idMapWA = defaultdict(list)
-    idMapAB = defaultdict(list)
+    idMapWA: Mapping[str, List[str]] = defaultdict(list)
+    idMapAB: Mapping[str, List[str]] = defaultdict(list)
 
     for aw in aPara.find_all(name='w'):
         awId = aw['id']
@@ -189,6 +297,11 @@ def createLinkedLayers(wPara: bs4.Tag, aPara: bs4.Tag, bPara: bs4.Tag):
 
     idMapAW = revertMapping(idMapWA)
     idMapBA = revertMapping(idMapAB)
+
+    wLayer = createWLayer(wPara=wPara, idMapWA=idMapWA, idToDelW=idToDelW)
+    aLayer = createALayer(aPara=aPara, idMapAW=idMapAW, idMapAB=idMapAB, idToDelA=idToDelA)
+    bLayer = createBLayer(bPara=bPara, idMapBA=idMapBA)
+    print(bLayer)
 
 
 def findDeletions(paragraph: bs4.Tag) -> Dict[str, DeletionToken]:
