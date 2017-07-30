@@ -203,14 +203,24 @@ def createWLayer(
 
     tokens: List[AnnotToken] = []
 
+
     for wTag in wPara.find_all(name='w'):
         wid = wTag['id']
+
+        delNode = idToDelW.get(wid)
+        linkIdsHigher = idMapWA[wid]
+
+        if not delNode and not linkIdsHigher:
+            print(f'W-layer token with no links to A-layer: {wTag}', file=sys.stderr)
+        elif delNode and linkIdsHigher:
+            print(f'W-layer token with both deletion and non-deletion edges to A-layer: {wTag}', file=sys.stderr)
+
         tokens.append(AnnotToken(
             tid=wid,
             baseToken=WToken(wTag.token.string),
             layer='w',
-            linkIdsHigher=idMapWA[wid],
-            linksHigher=[idToDelW[wid]] if wid in idToDelW else []
+            linkIdsHigher=linkIdsHigher,
+            linksHigher=[delNode] if delNode else []
         ))
 
     return TokenLayer.of('w', tokens)
@@ -237,13 +247,21 @@ def createALayer(
         assert len(wTag.find_all(name='edge', recursive=False)) <= 1, f'w-tag contains multiple edges: {wTag}'
         errors = [ErrorData.fromTag(err) for err in wTag.edge.find_all(name='error')] if wTag.edge else []
 
+        delNode = idToDelA.get(wid)
+        linkIdsHigher = idMapAB[wid]
+
+        if not delNode and not linkIdsHigher:
+            print(f'A-layer token with no links to B-layer: {wTag}', file=sys.stderr)
+        elif delNode and linkIdsHigher:
+            print(f'A-layer token with both deletion and non-deletion edges to B-layer: {wTag}', file=sys.stderr)
+
         tokens.append(AnnotToken(
             tid=wid,
             baseToken=AToken(text=wTag.token.string, morphs=morphs),
             layer='a',
             linkIdsLower=idMapAW[wid],
-            linkIdsHigher=idMapAB[wid],
-            linksHigher=[idToDelA[wid]] if wid in idToDelA else [],
+            linkIdsHigher=linkIdsHigher,
+            linksHigher=[delNode] if delNode else [],
             errors=errors
         ))
 
@@ -264,7 +282,7 @@ def createBLayer(
             print(f'skipping token with no lex tag: {wTag}', file=sys.stderr)
             continue
 
-        assert len(wTag.find_all(name='lex', recursive=False)) == 1, f'w-tag contains multiple lex tags: {wTag}'
+        assert len(wTag.find_all(name='lex', recursive=False)) == 1, f'B-layer w-tag contains multiple lex tags: {wTag}'
         morph = Morph.fromLexTag(wTag.lex)
 
         #assert len(wTag.find_all(name='edge', recursive=False)) <= 1, f'w-tag contains multiple edges: {wTag}'
@@ -311,7 +329,8 @@ def createLinkedLayers(wPara: bs4.Tag, aPara: bs4.Tag, bPara: bs4.Tag):
     wLayer = createWLayer(wPara=wPara, idMapWA=idMapWA, idToDelW=idToDelW)
     aLayer = createALayer(aPara=aPara, idMapAW=idMapAW, idMapAB=idMapAB, idToDelA=idToDelA)
     bLayer = createBLayer(bPara=bPara, idMapBA=idMapBA)
-    print(bLayer)
+    
+    
 
 
 def findDeletions(paragraph: bs4.Tag) -> Dict[str, DeletionToken]:
