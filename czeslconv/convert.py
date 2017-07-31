@@ -275,28 +275,35 @@ def createBLayer(
 
     tokens: List[AnnotToken] = []
 
-    for wTag in bPara.find_all(name='w'):
-        wid = wTag['id']
+    for sentTag in bPara.find_all(name='s', recursive=False):
+        sentId = sentTag['id']
+        for wTag in sentTag.find_all(name='w', recursive=False):
+            wid = wTag['id']
 
-        if not wTag.lex:
-            print(f'skipping token with no lex tag: {wTag}', file=sys.stderr)
-            continue
+            if not wTag.lex:
+                print(f'skipping token with no lex tag: {wTag}', file=sys.stderr)
+                continue
 
-        assert len(wTag.find_all(name='lex', recursive=False)) == 1, f'B-layer w-tag contains multiple lex tags: {wTag}'
-        morph = Morph.fromLexTag(wTag.lex)
+            assert len(wTag.find_all(name='lex', recursive=False)) == 1, f'B-layer w-tag contains multiple lex tags: {wTag}'
+            morph = Morph.fromLexTag(wTag.lex)
 
-        #assert len(wTag.find_all(name='edge', recursive=False)) <= 1, f'w-tag contains multiple edges: {wTag}'
-        errors = [ErrorData.fromTag(err) for err in wTag.edge.find_all(name='error')] if wTag.edge else []
+            #assert len(wTag.find_all(name='edge', recursive=False)) <= 1, f'w-tag contains multiple edges: {wTag}'
+            errors = [ErrorData.fromTag(err) for err in wTag.edge.find_all(name='error')] if wTag.edge else []
 
-        tokens.append(AnnotToken(
-            tid=wid,
-            baseToken=BToken(text=wTag.token.string, morph=morph),
-            layer='b',
-            linkIdsLower=idMapBA[wid],
-            errors=errors
-        ))
+            tokens.append(AnnotToken(
+                tid=wid,
+                baseToken=BToken(text=wTag.token.string, morph=morph),
+                layer='b',
+                sentenceId=sentId,
+                linkIdsLower=idMapBA[wid],
+                errors=errors
+            ))
 
     return TokenLayer.of('b', tokens)
+
+
+def linkLayers(wLayer: TokenLayer, aLayer: TokenLayer, bLayer: TokenLayer):
+    pass
 
 
 def createLinkedLayers(wPara: bs4.Tag, aPara: bs4.Tag, bPara: bs4.Tag):
@@ -329,8 +336,8 @@ def createLinkedLayers(wPara: bs4.Tag, aPara: bs4.Tag, bPara: bs4.Tag):
     wLayer = createWLayer(wPara=wPara, idMapWA=idMapWA, idToDelW=idToDelW)
     aLayer = createALayer(aPara=aPara, idMapAW=idMapAW, idMapAB=idMapAB, idToDelA=idToDelA)
     bLayer = createBLayer(bPara=bPara, idMapBA=idMapBA)
-    
-    
+
+    linkLayers(wLayer, aLayer, bLayer)
 
 
 def findDeletions(paragraph: bs4.Tag) -> Dict[str, DeletionToken]:
