@@ -13,7 +13,7 @@ import bs4
 
 from collections import defaultdict
 from os import DirEntry
-from typing import Any, Dict, Iterable, List, Mapping, NamedTuple, Sequence, Union
+from typing import Any, Dict, Iterable, Iterator, List, Mapping, NamedTuple, Optional, Sequence, Union, Tuple
 
 from bs4 import BeautifulSoup
 
@@ -121,8 +121,14 @@ class TokenLayer(NamedTuple):
         idToToken = {t.tid: t for t in tokens}
         return TokenLayer(name, tokens, idToToken)
 
-    def get(self, tid:str) -> AnnotToken:
+    def get(self, tid:str) -> Optional[AnnotToken]:
         return self.idToToken.get(tid)
+
+    def __iter__(self) -> Iterator[AnnotToken]:
+        return iter(self.tokens)
+
+    def __len__(self) -> int:
+        return len(self.tokens)
 
 
 def readFile(fileName: str) -> str:
@@ -302,11 +308,49 @@ def createBLayer(
     return TokenLayer.of('b', tokens)
 
 
+def findTokensByIds(ids: Iterable[str], layer: TokenLayer) -> Tuple[List[AnnotToken], List[str]]:
+    """
+    find tokens by IDs in the given layer, return tuple of found token list and unmatched Ids
+    """
+    tokens = []
+    unmatchedIds = []
+
+    for tokId in ids:
+        token = layer.get(tokId)
+        if not token:
+            unmatchedIds.append(tokId)
+        else:
+            tokens.append(token)
+
+    return tokens, unmatchedIds
+
+
 def linkLayers(wLayer: TokenLayer, aLayer: TokenLayer, bLayer: TokenLayer):
-    pass
+    for wToken in wLayer:
+        if not wToken.linksHigher:
+            wToken.linksHigher, unmatchedIds = findTokensByIds(wToken.linkIdsHigher, aLayer)
+            for tokId in unmatchedIds:
+                print(f'token "{tokId}" linked from w-layer token "{wToken.tid}" not found in a-layer')
+
+    for aToken in aLayer:
+        if not aToken.linksLower:
+            aToken.linksLower, unmatchedIds = findTokensByIds(aToken.linkIdsLower, wLayer)
+            for tokId in unmatchedIds:
+                print(f'token "{tokId}" linked from a-layer token "{aToken.tid}" not found in w-layer')
+
+        if not aToken.linksHigher:
+            aToken.linksHigher, unmatchedIds = findTokensByIds(aToken.linkIdsHigher, bLayer)
+            for tokId in unmatchedIds:
+                print(f'token "{tokId}" linked from a-layer token "{aToken.tid}" not found in b-layer')
+
+    for bToken in bLayer:
+        if not bToken.linksLower:
+            bToken.linksLower, unmatchedIds = findTokensByIds(bToken.linkIdsLower, aLayer)
+            for tokId in unmatchedIds:
+                print(f'token "{tokId}" linked from b-layer token "{bToken.tid}" not found in a-layer')
 
 
-def createLinkedLayers(wPara: bs4.Tag, aPara: bs4.Tag, bPara: bs4.Tag):
+def createLinkedLayers(wPara: bs4.Tag, aPara: bs4.Tag, bPara: bs4.Tag) -> Tuple[TokenLayer, TokenLayer, TokenLayer]:
     idMapWA: Mapping[str, List[str]] = defaultdict(list)
     idMapAB: Mapping[str, List[str]] = defaultdict(list)
 
@@ -339,6 +383,8 @@ def createLinkedLayers(wPara: bs4.Tag, aPara: bs4.Tag, bPara: bs4.Tag):
 
     linkLayers(wLayer, aLayer, bLayer)
 
+    return wLayer, aLayer, bLayer
+
 
 def findDeletions(paragraph: bs4.Tag) -> Dict[str, DeletionToken]:
     idToDel = {}
@@ -365,7 +411,7 @@ def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag) -> str:
     wParaId = aPara['lowerpara.rf'].split('#', maxsplit=1)[1]
     wPara = wDoc.find(name='para', id=wParaId, recursive=False)
 
-    createLinkedLayers(wPara, aPara, bPara)
+    wLayer, aLayer, bLayer = createLinkedLayers(wPara, aPara, bPara)
 
     vertBuffer: List[str] = []
 
