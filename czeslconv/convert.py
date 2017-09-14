@@ -351,6 +351,9 @@ def linkLayers(wLayer: TokenLayer, aLayer: TokenLayer, bLayer: TokenLayer):
 
 
 def createLinkedLayers(wPara: bs4.Tag, aPara: bs4.Tag, bPara: bs4.Tag) -> Tuple[TokenLayer, TokenLayer, TokenLayer]:
+    """
+    Add references to nodes in other layers.
+    """
     idMapWA: Mapping[str, List[str]] = defaultdict(list)
     idMapAB: Mapping[str, List[str]] = defaultdict(list)
 
@@ -401,6 +404,30 @@ def findDeletions(paragraph: bs4.Tag) -> Dict[str, DeletionToken]:
     return idToDel
 
 
+def assignSentenceIds(tokLayer: TokenLayer):
+    """
+    propagate sentence IDs to the given layer from a higher layer
+    """
+    for tok in tokLayer:
+        currSentId = None
+
+        if tok.linksHigher and not isinstance(tok.linksHigher[0], DeletionToken):
+            currSentId = tok.linksHigher[0].sentenceId
+
+        tok.sentenceId = currSentId
+
+    # in case there were unlinked nodes at the beginning
+    for i, tok in enumerate(tokLayer):
+        if tok.sentenceId:
+            firstSentenceId = tok.sentenceId
+            firstOkIdx = i
+            break
+
+    for i in range(firstOkIdx):
+        tokLayer.tokens[i].sentenceId = firstSentenceId
+
+
+
 def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag) -> str:
     bParaId = bPara['id']
     commonId = bParaId.split('-', maxsplit=1)[1]
@@ -412,10 +439,31 @@ def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag) -> str:
     wPara = wDoc.find(name='para', id=wParaId, recursive=False)
 
     wLayer, aLayer, bLayer = createLinkedLayers(wPara, aPara, bPara)
+    assignSentenceIds(aLayer)
+    assignSentenceIds(wLayer)
 
+    currSentenceId = None
     vertBuffer: List[str] = []
 
     vertBuffer.append(f'<p id="{commonId}">')
+    for wTok in wLayer:
+        if wTok.sentenceId != currSentenceId:
+            if currSentenceId:
+                vertBuffer.append('</s>')
+            currSentenceId = wTok.sentenceId
+            vertBuffer.append(f'<s id={currSentenceId}>')
+
+        aTok = wTok.linksHigher[0] if wTok.linksHigher and not isinstance(wTok.linksHigher[0], DeletionToken) else None
+        vertBuffer.append('\t'.join((
+            wTok.baseToken.text,
+            wTok.tid,
+            aTok.tid if aTok else '',
+            aTok.baseToken.morphs[0].lemma if aTok else ''
+        )))
+
+
+    if currSentenceId:
+        vertBuffer.append('</s>')
 
     vertBuffer.append('</p>')
 
@@ -473,7 +521,7 @@ def main():
         metaXml: MetaXml = readMetaFile(metaFile)
         vertStr: str = xmlToVert(metaXml)
         print(vertStr)
-
+        print()
 
 
 if __name__ == '__main__':
