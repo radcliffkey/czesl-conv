@@ -5,37 +5,18 @@ Conversion of Czesl XML to Manatee
 """
 
 import argparse
-import os
-import os.path
 import sys
-
 import bs4
 
-from collections import defaultdict
-from os import DirEntry
-from typing import Any, Dict, Iterable, Iterator, List, Mapping, NamedTuple, Optional, Sequence, Union, Tuple
+from czeslconv import iotools
+from czeslconv.iotools import MetaFile, MetaXml
 
 from bs4 import BeautifulSoup
+from collections import defaultdict
+from typing import Any, Dict, Iterable, Iterator, List, Mapping, NamedTuple, Optional, Sequence, Union, Tuple
 
-
-class MetaFile(NamedTuple):
-    """
-    Tuple of filenames belonging to the same annotated document
-    """
-    name: str
-    wfile: str
-    afile: str
-    bfile: str
-
-
-class MetaXml(NamedTuple):
-    """
-    Tuple of XML strings belonging to the same annotated document
-    """
-    name: str
-    wxml: str
-    axml: str
-    bxml: str
+# Separator used when fitting multiple POS-tags within a single vertical field
+POS_TAG_SEP = '|'
 
 
 class Morph(NamedTuple):
@@ -131,20 +112,6 @@ class TokenLayer(NamedTuple):
         return len(self.tokens)
 
 
-def readFile(fileName: str) -> str:
-    with open(fileName, 'r', encoding='utf-8') as f:
-        return f.read()
-
-
-def readMetaFile(metaFile: MetaFile) -> MetaXml:
-    return MetaXml(
-        name=metaFile.name,
-        wxml=readFile(metaFile.wfile),
-        axml=readFile(metaFile.afile),
-        bxml=readFile(metaFile.bfile)
-    )
-
-
 def revertMapping(mapping: Mapping[Any, Iterable[Any]]) -> Mapping[Any, List[Any]]:
     revertedMap: Mapping[Any, List[Any]] = defaultdict(list)
     for k, vals in mapping.items():
@@ -152,53 +119,6 @@ def revertMapping(mapping: Mapping[Any, Iterable[Any]]) -> Mapping[Any, List[Any
             revertedMap[v].append(k)
 
     return revertedMap
-
-
-def processFileGroups(baseNameToPaths: Mapping[str, Dict[str, str]]) -> Iterable[MetaFile]:
-    for baseName, nameToPath in baseNameToPaths.items():
-        try:
-            wname = baseName + '.w.xml'
-            wfile = nameToPath[wname]
-        except KeyError:
-            raise FileNotFoundError(f'File {wname} expected but not found')
-
-        try:
-            aname = baseName + '.a.xml'
-            afile = nameToPath[aname]
-        except KeyError:
-            raise FileNotFoundError(f'File {aname} expected but not found')
-
-        try:
-            bname = baseName + '.b.xml'
-            bfile = nameToPath[bname]
-        except KeyError:
-            raise FileNotFoundError(f'File {bname} expected but not found')
-
-        yield MetaFile(name=baseName, wfile=wfile, afile=afile, bfile=bfile)
-
-
-def getMetaFiles(filenames: Iterable[str]) -> Iterable[MetaFile]:
-    fullPaths = frozenset(os.path.abspath(fn) for fn in filenames if fn.endswith('.xml'))
-
-    baseNameToPaths: Mapping[str, Dict[str, str]] = defaultdict(dict)
-    for path in fullPaths:
-        fileName = os.path.basename(path)
-        baseName = fileName[:fileName.find('.')]
-        baseNameToPaths[baseName][fileName] = path
-
-    yield from processFileGroups(baseNameToPaths)
-
-
-def getMetaFilesFromDir(dirName: str) -> Iterable[MetaFile]:
-    dirEntries: Iterable[DirEntry] = os.scandir(dirName)
-    xmlEntries: Iterable[DirEntry] = (e for e in dirEntries if e.is_file() and e.name.endswith('.xml'))
-
-    baseNameToPaths: Mapping[str, Dict[str, str]] = defaultdict(dict)
-    for entry in xmlEntries:
-        baseName = entry.name[:entry.name.find('.')]
-        baseNameToPaths[baseName][entry.name] = entry.path
-
-    yield from processFileGroups(baseNameToPaths)
 
 
 def createWLayer(
@@ -427,6 +347,22 @@ def assignSentenceIds(tokLayer: TokenLayer):
         tokLayer.tokens[i].sentenceId = firstSentenceId
 
 
+def _noErrors(wTok: AnnotToken) -> bool:
+    if len(wTok.linksHigher) != 1 or isinstance(wTok.linksHigher[0], DeletionToken):
+        return False
+
+    aTok = wTok.linksHigher[0]
+
+    if aTok.errors or len(aTok.linksHigher) != 1 or isinstance(aTok.linksHigher[0], DeletionToken):
+        return False
+
+    bTok = aTok.linksHigher[0]
+
+    if bTok.errors:
+        return False
+
+    return True
+
 
 def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag) -> str:
     bParaId = bPara['id']
@@ -453,14 +389,21 @@ def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag) -> str:
             currSentenceId = wTok.sentenceId
             vertBuffer.append(f'<s id={currSentenceId}>')
 
-        aTok = wTok.linksHigher[0] if wTok.linksHigher and not isinstance(wTok.linksHigher[0], DeletionToken) else None
-        vertBuffer.append('\t'.join((
-            wTok.baseToken.text,
-            wTok.tid,
-            aTok.tid if aTok else '',
-            aTok.baseToken.morphs[0].lemma if aTok else ''
-        )))
+        if _noErrors(wTok):
+            aTok = wTok.linksHigher[0]
+            bTok = aTok.linksHigher[0]
 
+            vertBuffer.append('\t'.join((
+                wTok.baseToken.text,
+                wTok.tid,
+                aTok.tid,
+                bTok.tid,
+                bTok.baseToken.morph.lemma,
+                POS_TAG_SEP.join(bTok.baseToken.morph.tags)
+            )))
+        else:
+            pass
+            #handle errors
 
     if currSentenceId:
         vertBuffer.append('</s>')
@@ -515,10 +458,10 @@ def main():
 
     args = argparser.parse_args()
 
-    metaFiles: Iterable[MetaFile] = getMetaFilesFromDir(args.dir) if args.dir else getMetaFiles(args.files)
+    metaFiles: Iterable[MetaFile] = iotools.getMetaFilesFromDir(args.dir) if args.dir else iotools.getMetaFiles(args.files)
 
     for metaFile in metaFiles:
-        metaXml: MetaXml = readMetaFile(metaFile)
+        metaXml: MetaXml = iotools.readMetaFile(metaFile)
         vertStr: str = xmlToVert(metaXml)
         print(vertStr)
         print()
