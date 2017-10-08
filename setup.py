@@ -22,9 +22,9 @@ setup(
     ],
 
     # Dependencies
+    # lxml requries C libraries libxml2 and libxslt installed on your system
     install_requires=['beautifulsoup4>=4.6', 'lxml>=3.8'],
 
-    # Don't use find_packages() because it does not work well with namespace packages.
     packages=['czeslconv'],
 
     test_suite='czeslconv.test'
