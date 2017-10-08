@@ -246,6 +246,9 @@ def findTokensByIds(ids: Iterable[str], layer: TokenLayer) -> Tuple[List[AnnotTo
 
 
 def linkLayers(wLayer: TokenLayer, aLayer: TokenLayer, bLayer: TokenLayer):
+    """
+    add references to higher and lower layers to tokens based on linked token IDs
+    """
     for wToken in wLayer:
         if not wToken.linksHigher:
             wToken.linksHigher, unmatchedIds = findTokensByIds(wToken.linkIdsHigher, aLayer)
@@ -387,7 +390,7 @@ def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag) -> str:
             if currSentenceId:
                 vertBuffer.append('</s>')
             currSentenceId = wTok.sentenceId
-            vertBuffer.append(f'<s id={currSentenceId}>')
+            vertBuffer.append(f'<s id="{currSentenceId}">')
 
         if _noErrors(wTok):
             aTok = wTok.linksHigher[0]
@@ -402,7 +405,30 @@ def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag) -> str:
                 POS_TAG_SEP.join(bTok.baseToken.morph.tags)
             )))
         else:
-            pass
+            if len(wTok.linksHigher) == 1:
+                aTok = wTok.linksHigher[0]
+                if aTok.errors:
+                    errTier = '1'
+                    errTypeStr = '|'.join('|'.join(e.tags) for e in aTok.errors)
+                    vertBuffer.append(f'<err tier="{errTier}" type="{errTypeStr}">')
+                    vertBuffer.append('\t'.join(( wTok.baseToken.text, wTok.tid, '', '', '', '')))
+                    vertBuffer.append('</err>')
+                    vertBuffer.append(f'<corr tier="{errTier}" type="{errTypeStr}">')
+                    if len(aTok.linksHigher) == 1 and not aTok.linksHigher[0].errors:
+                        bTok = aTok.linksHigher[0]
+                        vertBuffer.append('\t'.join((
+                            aTok.baseToken.text,
+                            '',
+                            aTok.tid,
+                            bTok.tid,
+                            bTok.baseToken.morph.lemma,
+                            POS_TAG_SEP.join(bTok.baseToken.morph.tags)
+                        )))
+                    else:
+                        print(f'skipping unhandled error for token {aTok.tid} "{aTok.baseToken.text}"', file=sys.stderr)
+                    vertBuffer.append('</corr>')
+                else:
+                    print(f'skipping unhandled error for token {wTok.tid} "{wTok.baseToken.text}"', file=sys.stderr)
             #handle errors
 
     if currSentenceId:
@@ -421,7 +447,7 @@ def docToVert(bDoc: bs4.Tag, wLayer: bs4.Tag, aLayer: bs4.Tag) -> str:
 
     vertBuffer: List[str] = []
 
-    vertBuffer.append(f'<doc t_id={docId}>')
+    vertBuffer.append(f'<doc t_id="{docId}">')
 
     bParas: Iterable[bs4.Tag] = bDoc.find_all(name='para', recursive=False)
 
