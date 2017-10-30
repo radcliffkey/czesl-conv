@@ -405,37 +405,62 @@ def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag) -> str:
                 POS_TAG_SEP.join(bTok.baseToken.morph.tags)
             )))
         else:
-            if len(wTok.linksHigher) == 1:
-                aTok = wTok.linksHigher[0]
-                if aTok.errors:
+            if len(wTok.linksHigher) >= 1:
+                aTok1 = wTok.linksHigher[0]
+                if aTok1.errors:
                     errTier = '1'
                     errTypeStr = '|'.join('|'.join(e.tags) for e in aTok.errors)
                     vertBuffer.append(f'<err tier="{errTier}" type="{errTypeStr}">')
                     vertBuffer.append('\t'.join(( wTok.baseToken.text, wTok.tid, '', '', '', '')))
                     vertBuffer.append('</err>')
                     vertBuffer.append(f'<corr tier="{errTier}" type="{errTypeStr}">')
-                    if len(aTok.linksHigher) == 1 and not aTok.linksHigher[0].errors:
-                        bTok = aTok.linksHigher[0]
-                        vertBuffer.append('\t'.join((
-                            aTok.baseToken.text,
-                            '',
-                            aTok.tid,
-                            bTok.tid,
-                            bTok.baseToken.morph.lemma,
-                            POS_TAG_SEP.join(bTok.baseToken.morph.tags)
-                        )))
-                    elif len(aTok.linksHigher) >= 1 and not isinstance(aTok.linksHigher[0], DeletionToken):
-                        bTok1 = aTok.linksHigher[0]
-                        errTier = '2'
-                        errTypeStr = '|'.join('|'.join(e.tags) for e in bTok1.errors)
-                        vertBuffer.append(f'<err tier="{errTier}" type="{errTypeStr}">')
-                        aLemmas = '|'.join(m.lemma for m in aTok.baseToken.morphs)
-                        aTags = '|+|'.join(POS_TAG_SEP.join(m.tags) for m in aTok.baseToken.morphs)
-                        vertBuffer.append('\t'.join((aTok.baseToken.text, '', aTok.tid, '', aLemmas, aTags)))
-                        vertBuffer.append('</err>')
-                        vertBuffer.append(f'<corr tier="{errTier}" type="{errTypeStr}">')
-                        for bTok in aTok.linksHigher:
+
+                    for aTok in wTok.linksHigher:
+                        if len(aTok.linksHigher) == 1 and not aTok.linksHigher[0].errors:
+                            bTok = aTok.linksHigher[0]
                             vertBuffer.append('\t'.join((
+                                aTok.baseToken.text,
+                                '',
+                                aTok.tid,
+                                bTok.tid,
+                                bTok.baseToken.morph.lemma,
+                                POS_TAG_SEP.join(bTok.baseToken.morph.tags)
+                            )))
+                        elif len(aTok.linksHigher) >= 1 and not isinstance(aTok.linksHigher[0], DeletionToken):
+                            bTok1 = aTok.linksHigher[0]
+                            errTier = '2'
+                            errTypeStr = '|'.join('|'.join(e.tags) for e in bTok1.errors)
+                            vertBuffer.append(f'<err tier="{errTier}" type="{errTypeStr}">')
+                            aLemmas = '|'.join(m.lemma for m in aTok.baseToken.morphs)
+                            aTags = '|+|'.join(POS_TAG_SEP.join(m.tags) for m in aTok.baseToken.morphs)
+                            vertBuffer.append('\t'.join((aTok.baseToken.text, '', aTok.tid, '', aLemmas, aTags)))
+                            vertBuffer.append('</err>')
+                            vertBuffer.append(f'<corr tier="{errTier}" type="{errTypeStr}">')
+                            for bTok in aTok.linksHigher:
+                                vertBuffer.append('\t'.join((
+                                bTok.baseToken.text,
+                                '',
+                                '',
+                                bTok.tid,
+                                bTok.baseToken.morph.lemma,
+                                POS_TAG_SEP.join(bTok.baseToken.morph.tags)
+                            )))
+                            vertBuffer.append('</corr>')
+                        else:
+                            print(f'skipping unhandled error (deletion) for token {aTok.tid} "{aTok.baseToken.text}"', file=sys.stderr)
+                    vertBuffer.append('</corr>')
+                elif len(wTok.linksHigher) == 1 and len(aTok1.linksHigher) >= 1 and not isinstance(aTok1.linksHigher[0], DeletionToken):
+                    bTok1 = aTok1.linksHigher[0]
+                    errTier = '2'
+                    errTypeStr = '|'.join('|'.join(e.tags) for e in bTok1.errors)
+                    aLemmas = '|'.join(m.lemma for m in aTok1.baseToken.morphs)
+                    aTags = '|+|'.join(POS_TAG_SEP.join(m.tags) for m in aTok1.baseToken.morphs)
+                    vertBuffer.append(f'<err tier="{errTier}" type="{errTypeStr}">')
+                    vertBuffer.append('\t'.join((wTok.baseToken.text, wTok.tid, aTok1.tid, '', aLemmas, aTags)))
+                    vertBuffer.append('</err>')
+                    vertBuffer.append(f'<corr tier="{errTier}" type="{errTypeStr}">')
+                    for bTok in aTok1.linksHigher:
+                        vertBuffer.append('\t'.join((
                             bTok.baseToken.text,
                             '',
                             '',
@@ -443,12 +468,11 @@ def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag) -> str:
                             bTok.baseToken.morph.lemma,
                             POS_TAG_SEP.join(bTok.baseToken.morph.tags)
                         )))
-                        vertBuffer.append('</corr>')
-                    else:
-                        print(f'skipping unhandled error (deletion) for token {aTok.tid} "{aTok.baseToken.text}"', file=sys.stderr)
                     vertBuffer.append('</corr>')
                 else:
                     print(f'skipping unhandled error for token {wTok.tid} "{wTok.baseToken.text}"', file=sys.stderr)
+            else:
+                print(f'skipping unhandled error (deletion) for token {wTok.tid} "{wTok.baseToken.text}"', file=sys.stderr)
             #handle errors
 
     if currSentenceId:
