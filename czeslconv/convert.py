@@ -409,7 +409,7 @@ def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag) -> str:
                 aTok1 = wTok.linksHigher[0]
                 if aTok1.errors:
                     errTier = '1'
-                    errTypeStr = '|'.join('|'.join(e.tags) for e in aTok.errors)
+                    errTypeStr = '|'.join('|'.join(e.tags) for e in aTok1.errors)
                     vertBuffer.append(f'<err tier="{errTier}" type="{errTypeStr}">')
                     vertBuffer.append('\t'.join(( wTok.baseToken.text, wTok.tid, '', '', '', '')))
                     vertBuffer.append('</err>')
