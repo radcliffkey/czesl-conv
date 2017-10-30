@@ -79,11 +79,11 @@ class AnnotToken:
         self.baseToken = baseToken
         self.layer = layer
         self.sentenceId = sentenceId
-        self.linkIdsLower = linkIdsLower
-        self.linkIdsHigher = linkIdsHigher
-        self.errors = errors if errors else []
-        self.linksLower = linksLower if linksLower else []
-        self.linksHigher = linksHigher if linksHigher else []
+        self.linkIdsLower: List[str] = list(linkIdsLower) if linkIdsLower else []
+        self.linkIdsHigher: List[str] = list(linkIdsHigher) if linkIdsHigher else []
+        self.errors: List[ErrorData] = list(errors) if errors else []
+        self.linksLower: List[Union[AnnotToken, DeletionToken]] = list(linksLower) if linksLower else []
+        self.linksHigher: List[Union[AnnotToken, DeletionToken]] = list(linksHigher) if linksHigher else []
 
     def __str__(self) -> str:
         return f'Token(layer={self.layer}, id={self.tid}, morph={self.baseToken})'
