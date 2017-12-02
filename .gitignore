@@ -102,3 +102,7 @@ ENV/
 
 #IDEs
 .idea/
+.project
+.pydevproject
+.settings/
+

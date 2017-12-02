@@ -531,9 +531,14 @@ def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag) -> str:
 
 def docToVert(bDoc: bs4.Tag, wLayer: bs4.Tag, aLayer: bs4.Tag) -> str:
     docId = bDoc['id']
+    # support two doc ID formats: 1) the same in all layers 2) prefixed by the layer name
+    aDocId = 'a' + docId[1:]
+    wDocId = 'w' + docId[1:]
 
-    wDoc = wLayer.wdata.find(name='doc', id=docId, recursive=False)
-    aDoc = aLayer.ldata.find(name='doc', id=docId, recursive=False)
+    wDoc = (wLayer.wdata.find(name='doc', id=docId, recursive=False)
+            or wLayer.wdata.find(name='doc', id=wDocId, recursive=False))
+    aDoc = (aLayer.ldata.find(name='doc', id=docId, recursive=False)
+            or aLayer.ldata.find(name='doc', id=aDocId, recursive=False))
 
     vertBuffer: List[str] = []
 
