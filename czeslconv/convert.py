@@ -389,7 +389,15 @@ def getErrorTypeStr(tok: AnnotToken):
     return '|'.join('|'.join(e.tags) for e in tok.errors)
 
 
-def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag) -> str:
+def inferErrors(tokLayer: TokenLayer):
+    for token in tokLayer:
+        if not token.errors and len(token.linksLower) == 1:
+            lowerTok = token.linksLower[0]
+            if lowerTok.baseToken.text != token.baseToken.text:
+                token.errors = [ErrorData(tags=['unknown'], links=[])]
+
+
+def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag, guessErrors: bool=False) -> str:
     bParaId = bPara['id']
     commonId = bParaId.split('-', maxsplit=1)[1]
 
@@ -402,6 +410,10 @@ def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag) -> str:
     wLayer, aLayer, bLayer = createLinkedLayers(wPara, aPara, bPara)
     assignSentenceIds(aLayer)
     assignSentenceIds(wLayer)
+
+    if guessErrors:
+        inferErrors(aLayer)
+        inferErrors(bLayer)
 
     currSentenceId = None
     vertBuffer: List[str] = []
@@ -431,10 +443,10 @@ def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag) -> str:
                 deletionTok = wTok.linksHigher[0] if wTok.linksHigher else None
                 errTier = '1'
                 errTypeStr = getErrorTypeStr(deletionTok) if deletionTok else 'del'
-                vertBuffer.append(f'<err tier="{errTier}" type="{errTypeStr}">')
+                vertBuffer.append(f'<err level="{errTier}" type="{errTypeStr}">')
                 vertBuffer.append('\t'.join((wTok.baseToken.text, wTok.tid, '', '', '', '')))
                 vertBuffer.append('</err>')
-                vertBuffer.append(f'<corr tier="{errTier}" type="{errTypeStr}">')
+                vertBuffer.append(f'<corr level="{errTier}" type="{errTypeStr}">')
                 vertBuffer.append('\t'.join((DEL_TOK_STR, '', DEL_TOK_ID, DEL_TOK_ID, '', '')))
                 vertBuffer.append('</corr>')
             else:
@@ -442,10 +454,10 @@ def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag) -> str:
                 if aTok1.errors:
                     errTier = '1'
                     errTypeStr = '|'.join('|'.join(e.tags) for e in aTok1.errors)
-                    vertBuffer.append(f'<err tier="{errTier}" type="{errTypeStr}">')
+                    vertBuffer.append(f'<err level="{errTier}" type="{errTypeStr}">')
                     vertBuffer.append('\t'.join((wTok.baseToken.text, wTok.tid, '', '', '', '')))
                     vertBuffer.append('</err>')
-                    vertBuffer.append(f'<corr tier="{errTier}" type="{errTypeStr}">')
+                    vertBuffer.append(f'<corr level="{errTier}" type="{errTypeStr}">')
 
                     for aTok in wTok.linksHigher:
                         if len(aTok.linksHigher) == 1 and _noErrors(aTok.linksHigher[0]):
@@ -462,12 +474,12 @@ def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag) -> str:
                             bTok1 = aTok.linksHigher[0]
                             errTier = '2'
                             errTypeStr = '|'.join('|'.join(e.tags) for e in bTok1.errors)
-                            vertBuffer.append(f'<err tier="{errTier}" type="{errTypeStr}">')
+                            vertBuffer.append(f'<err level="{errTier}" type="{errTypeStr}">')
                             aLemmas = '|'.join(m.lemma for m in aTok.baseToken.morphs)
                             aTags = '|+|'.join(POS_TAG_SEP.join(m.tags) for m in aTok.baseToken.morphs)
                             vertBuffer.append('\t'.join((aTok.baseToken.text, '', aTok.tid, '', aLemmas, aTags)))
                             vertBuffer.append('</err>')
-                            vertBuffer.append(f'<corr tier="{errTier}" type="{errTypeStr}">')
+                            vertBuffer.append(f'<corr level="{errTier}" type="{errTypeStr}">')
                             for bTok in aTok.linksHigher:
                                 vertBuffer.append('\t'.join((
                                 bTok.baseToken.text,
@@ -488,10 +500,10 @@ def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag) -> str:
                     errTypeStr = '|'.join('|'.join(e.tags) for e in bTok1.errors)
                     aLemmas = '|'.join(m.lemma for m in aTok1.baseToken.morphs)
                     aTags = '|+|'.join(POS_TAG_SEP.join(m.tags) for m in aTok1.baseToken.morphs)
-                    vertBuffer.append(f'<err tier="{errTier}" type="{errTypeStr}">')
+                    vertBuffer.append(f'<err level="{errTier}" type="{errTypeStr}">')
                     vertBuffer.append('\t'.join((wTok.baseToken.text, wTok.tid, aTok1.tid, '', aLemmas, aTags)))
                     vertBuffer.append('</err>')
-                    vertBuffer.append(f'<corr tier="{errTier}" type="{errTypeStr}">')
+                    vertBuffer.append(f'<corr level="{errTier}" type="{errTypeStr}">')
                     for bTok in aTok1.linksHigher:
                         vertBuffer.append('\t'.join((
                             bTok.baseToken.text,
@@ -510,10 +522,10 @@ def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag) -> str:
 
                     aLemmas = '|'.join(m.lemma for m in aTok1.baseToken.morphs)
                     aTags = '|+|'.join(POS_TAG_SEP.join(m.tags) for m in aTok1.baseToken.morphs)
-                    vertBuffer.append(f'<err tier="{errTier}" type="{errTypeStr}">')
+                    vertBuffer.append(f'<err level="{errTier}" type="{errTypeStr}">')
                     vertBuffer.append('\t'.join((wTok.baseToken.text, wTok.tid, aTok1.tid, '', aLemmas, aTags)))
                     vertBuffer.append('</err>')
-                    vertBuffer.append(f'<corr tier="{errTier}" type="{errTypeStr}">')
+                    vertBuffer.append(f'<corr level="{errTier}" type="{errTypeStr}">')
                     vertBuffer.append('\t'.join((DEL_TOK_STR, '', '', DEL_TOK_ID, '', '')))
                     vertBuffer.append('</corr>')
                 else:
@@ -529,7 +541,7 @@ def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag) -> str:
     return '\n'.join(vertBuffer)
 
 
-def docToVert(bDoc: bs4.Tag, wLayer: bs4.Tag, aLayer: bs4.Tag) -> str:
+def docToVert(bDoc: bs4.Tag, wLayer: bs4.Tag, aLayer: bs4.Tag, guessErrors: bool=False) -> str:
     bDocId = bDoc['id']
     # Use reference to lower layers to get lower layer doc IDs.
     # If the attribute 'lowerdoc.rf' is missing,
@@ -546,19 +558,19 @@ def docToVert(bDoc: bs4.Tag, wLayer: bs4.Tag, aLayer: bs4.Tag) -> str:
     vertBuffer: List[str] = []
 
     outDocId = bDocId[2:]
-    vertBuffer.append(f'<doc t_id="{outDocId}">')
+    vertBuffer.append(f'<doc id="{outDocId}">')
 
     bParas: Iterable[bs4.Tag] = bDoc.find_all(name='para', recursive=False)
 
     for bPara in bParas:
-        vertBuffer.append(paraToVert(bPara, aDoc, wDoc))
+        vertBuffer.append(paraToVert(bPara, aDoc, wDoc, guessErrors=guessErrors))
 
     vertBuffer.append('</doc>')
 
     return '\n'.join(vertBuffer)
 
 
-def xmlToVert(metaXml: MetaXml) -> str:
+def xmlToVert(metaXml: MetaXml, guessErrors: bool=False) -> str:
     wLayer = BeautifulSoup(metaXml.wxml, 'lxml-xml')
     aLayer = BeautifulSoup(metaXml.axml, 'lxml-xml')
     bLayer = BeautifulSoup(metaXml.bxml, 'lxml-xml')
@@ -568,7 +580,7 @@ def xmlToVert(metaXml: MetaXml) -> str:
     vertBuffer: List[str] = []
 
     for bDoc in bDocs:
-        vertBuffer.append(docToVert(bDoc, wLayer, aLayer))
+        vertBuffer.append(docToVert(bDoc, wLayer, aLayer, guessErrors=guessErrors))
 
     return '\n'.join(vertBuffer)
 
@@ -580,6 +592,7 @@ def main():
     inputArgGrp = argparser.add_mutually_exclusive_group(required=True)
     inputArgGrp.add_argument('-f', '--files', nargs='+', metavar='FILE', help='files to process')
     inputArgGrp.add_argument('-d', '--dir', metavar='DIR', help='directory to process')
+    argparser.add_argument('-g', '--guessErrors', action='store_true', help='detect errors by comparing token texts')
 
     args = argparser.parse_args()
 
@@ -587,7 +600,7 @@ def main():
 
     for metaFile in metaFiles:
         metaXml: MetaXml = iotools.readMetaFile(metaFile)
-        vertStr: str = xmlToVert(metaXml)
+        vertStr: str = xmlToVert(metaXml, guessErrors=args.guessErrors)
         print(vertStr)
         print()
 
