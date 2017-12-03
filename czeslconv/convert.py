@@ -530,19 +530,23 @@ def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag) -> str:
 
 
 def docToVert(bDoc: bs4.Tag, wLayer: bs4.Tag, aLayer: bs4.Tag) -> str:
-    docId = bDoc['id']
-    # support two doc ID formats: 1) the same in all layers 2) prefixed by the layer name
-    aDocId = 'a' + docId[1:]
-    wDocId = 'w' + docId[1:]
+    bDocId = bDoc['id']
+    # Use reference to lower layers to get lower layer doc IDs.
+    # If the attribute 'lowerdoc.rf' is missing,
+    # try two doc ID formats: 1) the same in all layers 2) prefixed by the layer name
 
-    wDoc = (wLayer.wdata.find(name='doc', id=docId, recursive=False)
-            or wLayer.wdata.find(name='doc', id=wDocId, recursive=False))
-    aDoc = (aLayer.ldata.find(name='doc', id=docId, recursive=False)
-            or aLayer.ldata.find(name='doc', id=aDocId, recursive=False))
+    aDocId = bDoc['lowerdoc.rf'][2:] if bDoc.has_attr('lowerdoc.rf') else 'a' + bDocId[1:]
+    aDoc = (aLayer.ldata.find(name='doc', id=aDocId, recursive=False)
+            or aLayer.ldata.find(name='doc', id=bDocId, recursive=False))
+
+    wDocId = aDoc['lowerdoc.rf'][2:] if aDoc.has_attr('lowerdoc.rf') else 'w' + bDocId[1:]
+    wDoc = (wLayer.wdata.find(name='doc', id=wDocId, recursive=False)
+            or wLayer.wdata.find(name='doc', id=bDocId, recursive=False))
 
     vertBuffer: List[str] = []
 
-    vertBuffer.append(f'<doc t_id="{docId}">')
+    outDocId = bDocId[2:]
+    vertBuffer.append(f'<doc t_id="{outDocId}">')
 
     bParas: Iterable[bs4.Tag] = bDoc.find_all(name='para', recursive=False)
 
