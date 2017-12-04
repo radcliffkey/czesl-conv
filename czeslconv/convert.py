@@ -7,6 +7,7 @@ Conversion of Czesl XML to Manatee
 import argparse
 import sys
 import bs4
+import traceback
 
 from czeslconv import iotools
 from czeslconv.iotools import MetaFile, MetaXml
@@ -334,6 +335,9 @@ def assignSentenceIds(tokLayer: TokenLayer):
     """
     propagate sentence IDs to the given layer from a higher layer
     """
+    if not tokLayer:
+        return
+
     for tok in tokLayer:
         currSentId = None
 
@@ -342,12 +346,19 @@ def assignSentenceIds(tokLayer: TokenLayer):
 
         tok.sentenceId = currSentId
 
+    firstOkIdx = None
     # in case there were unlinked nodes at the beginning
     for i, tok in enumerate(tokLayer):
         if tok.sentenceId:
             firstSentenceId = tok.sentenceId
             firstOkIdx = i
             break
+
+    if firstOkIdx is None:
+        print('could not assign sentence ID to tokens', ', '.join(t.tid for t in tokLayer), file=sys.stderr)
+        for tok in tokLayer:
+            tok.sentenceId = 'unknown'
+        return
 
     for i in range(firstOkIdx):
         tokLayer.tokens[i].sentenceId = firstSentenceId
@@ -599,8 +610,15 @@ def main():
     metaFiles: Iterable[MetaFile] = iotools.getMetaFilesFromDir(args.dir) if args.dir else iotools.getMetaFiles(args.files)
 
     for metaFile in metaFiles:
+        print(f'processing {metaFile}', file=sys.stderr)
         metaXml: MetaXml = iotools.readMetaFile(metaFile)
-        vertStr: str = xmlToVert(metaXml, guessErrors=args.guessErrors)
+        try:
+            vertStr: str = xmlToVert(metaXml, guessErrors=args.guessErrors)
+        except Exception as e:
+            print(f'Failed to process files {metaFile}', file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            continue
+
         print(vertStr)
         print()
 
