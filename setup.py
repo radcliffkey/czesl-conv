@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name='czeslconv',
-    version='1.0.0',
+    version='1.0.1',
 
     author='Radoslav Klic',
     author_email='radoslav.klic@gmail.com',
@@ -23,7 +23,7 @@ setup(
 
     # Dependencies
     # lxml requries C libraries libxml2 and libxslt installed on your system
-    install_requires=['beautifulsoup4>=4.6', 'lxml>=3.8'],
+    install_requires=['beautifulsoup4>=4.6', 'lxml>=4.0'],
 
     packages=['czeslconv'],
 

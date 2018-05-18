@@ -7,7 +7,7 @@ Tools for worikng with Czesl XML files
 import os
 import os.path
 
-from  collections import defaultdict
+from collections import defaultdict
 from os import DirEntry
 from typing import Dict, Iterable, Mapping, NamedTuple
 

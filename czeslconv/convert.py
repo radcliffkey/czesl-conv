@@ -13,7 +13,7 @@ from czeslconv import iotools
 from czeslconv.iotools import MetaFile, MetaXml
 
 from bs4 import BeautifulSoup
-from collections import defaultdict
+from collections import defaultdict, deque
 from typing import Any, Dict, Iterable, Iterator, List, Mapping, NamedTuple, Optional, Sequence, Union, Tuple
 
 # Separator used when fitting multiple POS-tags within a single vertical field
@@ -429,8 +429,11 @@ def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag, guessErrors: bool=F
     currSentenceId = None
     vertBuffer: List[str] = []
 
+    wToks = deque(wLayer)
+
     vertBuffer.append(f'<p id="{commonId}">')
-    for wTok in wLayer:
+    while wToks:
+        wTok = wToks.popleft()
         if wTok.sentenceId != currSentenceId:
             if currSentenceId:
                 vertBuffer.append('</s>')
@@ -463,10 +466,16 @@ def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag, guessErrors: bool=F
             else:
                 aTok1 = wTok.linksHigher[0]
                 if aTok1.errors:
+                    errWToks = [wTok]
+                    while aTok1 in wToks[0].linksHigher:
+                        errWToks.append(wToks.popleft())
+
                     errTier = '1'
                     errTypeStr = '|'.join('|'.join(e.tags) for e in aTok1.errors)
+
                     vertBuffer.append(f'<err level="{errTier}" type="{errTypeStr}">')
-                    vertBuffer.append('\t'.join((wTok.baseToken.text, wTok.tid, '', '', '', '')))
+                    for errWTok in errWToks:
+                        vertBuffer.append('\t'.join((errWTok.baseToken.text, errWTok.tid, '', '', '', '')))
                     vertBuffer.append('</err>')
                     vertBuffer.append(f'<corr level="{errTier}" type="{errTypeStr}">')
 
