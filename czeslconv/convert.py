@@ -133,7 +133,6 @@ def createWLayer(
 
     tokens: List[AnnotToken] = []
 
-
     for wTag in wPara.find_all(name='w'):
         wid = wTag['id']
 
@@ -174,8 +173,12 @@ def createALayer(
 
         morphs = [Morph.fromLexTag(lex) for lex in wTag.find_all(name='lex', recursive=False)]
 
-        assert len(wTag.find_all(name='edge', recursive=False)) <= 1, f'w-tag contains multiple edges: {wTag}'
-        errors = [ErrorData.fromTag(err) for err in wTag.edge.find_all(name='error')] if wTag.edge else []
+        if len(wTag.find_all(name='edge', recursive=False)) > 1:
+            print(f'w-tag contains multiple edges: {wTag}', file=sys.stderr)
+            errors = [ErrorData.fromTag(err) for edge in wTag.find_all(name='edge', recursive=False)
+                    for err in edge.find_all(name='error')]
+        else:
+            errors = [ErrorData.fromTag(err) for err in wTag.edge.find_all(name='error')] if wTag.edge else []
 
         delNode = idToDelA.get(wid)
         linkIdsHigher = idMapAB[wid]
@@ -286,9 +289,10 @@ def createLinkedLayers(wPara: bs4.Tag, aPara: bs4.Tag, bPara: bs4.Tag) -> Tuple[
 
     for aw in aPara.find_all(name='w'):
         awId = aw['id']
-        if aw.edge:
-            fromIds = [inEdge.string.split('#', maxsplit=1)[1] for inEdge in aw.edge.find_all(name='from')]
-            toIds = [awId] + [outEdge.string for outEdge in aw.edge.find_all(name='to')]
+        for edge in aw.find_all(name='edge', recursive=False):
+            # multi-edges are broken to simple edges between all vertices which may lead to information loss
+            fromIds = [inEdge.string.split('#', maxsplit=1)[1] for inEdge in edge.find_all(name='from')]
+            toIds = [awId] + [outEdge.string for outEdge in edge.find_all(name='to')]
             for fromId in fromIds:
                 idMapWA[fromId].extend(toIds)
 
