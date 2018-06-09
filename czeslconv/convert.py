@@ -471,7 +471,7 @@ def paraToVert(bPara: bs4.Tag, aDoc: bs4.Tag, wDoc: bs4.Tag, guessErrors: bool=F
                 aTok1 = wTok.linksHigher[0]
                 if aTok1.errors:
                     errWToks = [wTok]
-                    while aTok1 in wToks[0].linksHigher:
+                    while wToks and (aTok1 in wToks[0].linksHigher):
                         errWToks.append(wToks.popleft())
 
                     errTier = '1'
@@ -578,6 +578,13 @@ def docToVert(bDoc: bs4.Tag, wLayer: bs4.Tag, aLayer: bs4.Tag, guessErrors: bool
     wDocId = aDoc['lowerdoc.rf'][2:] if aDoc.has_attr('lowerdoc.rf') else 'w' + bDocId[1:]
     wDoc = (wLayer.wdata.find(name='doc', id=wDocId, recursive=False)
             or wLayer.wdata.find(name='doc', id=bDocId, recursive=False))
+
+    aTokCnt = len(aDoc.find_all(name='w', recursive=True))
+    bTokCnt = len(bDoc.find_all(name='w', recursive=True))
+
+    if bTokCnt == 0 and aTokCnt > 0:
+        raise ValueError('B-layer annotation missing')
+
 
     vertBuffer: List[str] = []
 
