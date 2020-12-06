@@ -1,7 +1,7 @@
 # czesl-conv
 Conversion of Czesl XML to Manatee
 
-Data repo: https://bitbucket.org/czesl/czesl/
+Data repo: https://bitbucket.org/czesl/czesl-man
 
 Usage examples:
 
